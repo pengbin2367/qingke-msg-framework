@@ -6,9 +6,13 @@
 #define QINGKE_MSG_FRAMEWORK_MODULEAPARSER_H
 
 #pragma once
-#include "Message.hpp"
+#include "MessageParser.hpp"
 
-// ModuleA-specific raw creator (allocates and parses message)
-Message* ModuleA_createFromRaw(const uint8_t* data, size_t len);
+class ModuleAParser : public MessageParser {
+public:
+    Message* parse(const uint8_t* data, size_t len) override;
+};
+
+extern "C" MessageParser* CreateModuleAParser();
 
 #endif //QINGKE_MSG_FRAMEWORK_MODULEAPARSER_H

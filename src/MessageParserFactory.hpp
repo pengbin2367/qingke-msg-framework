@@ -6,20 +6,41 @@
 #define QINGKE_MSG_FRAMEWORK_MESSAGEPARSERFACTORY_H
 
 #pragma once
+#include "MessageParser.hpp"
 #include <map>
-#include <cstdint>
-#include "Message.hpp"
-#include "MessageCache.hpp"
 
-typedef Message* (*ModuleParserCreateFromRaw)(const uint8_t* data, size_t len);
+typedef MessageParser* (*ParserCreator)();
 
-// Module-specific parser registry and parseCached helper
 class MessageParserFactory {
-public:
-    static void registerModuleParser(uint16_t moduleId, ModuleParserCreateFromRaw creator);
-    static Message* parseRaw(const uint8_t* data, size_t len);
-    static Message* parseCached(uint16_t moduleId, uint32_t seq, const MessageCache& cache);
-};
+private:
+    static std::map<MsgType, ParserCreator>& registry() {
+        static std::map<MsgType, ParserCreator> inst;
+        return inst;
+    }
 
+public:
+    static void registerParser(MsgType type, ParserCreator creator) {
+        registry()[type] = creator;
+    }
+
+    static MessageParser* create(MsgType type) {
+        if(registry().count(type)) return registry()[type]();
+        return nullptr;
+    }
+
+    static Message* parseMessage(const uint8_t* data, size_t len) {
+        if(len < sizeof(MsgHeader)) return nullptr;
+
+        MsgHeader hdr;
+        memcpy(&hdr, data, sizeof(MsgHeader));
+
+        MessageParser* parser = create(hdr.type);
+        if(!parser) return nullptr;
+
+        Message* msg = parser->parse(data, len);
+        delete parser;
+        return msg;
+    }
+};
 
 #endif //QINGKE_MSG_FRAMEWORK_MESSAGEPARSERFACTORY_H

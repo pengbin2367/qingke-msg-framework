@@ -4,10 +4,14 @@
 
 #ifndef QINGKE_MSG_FRAMEWORK_MODULEBPARSER_H
 #define QINGKE_MSG_FRAMEWORK_MODULEBPARSER_H
-
 #pragma once
-#include "Message.hpp"
+#include "MessageParser.hpp"
 
-Message* ModuleB_createFromRaw(const uint8_t* data, size_t len);
+class ModuleBParser : public MessageParser {
+public:
+    Message* parse(const uint8_t* data, size_t len) override;
+};
+
+extern "C" MessageParser* CreateModuleBParser();
 
 #endif //QINGKE_MSG_FRAMEWORK_MODULEBPARSER_H

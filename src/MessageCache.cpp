@@ -3,52 +3,44 @@
 //
 #include "MessageCache.hpp"
 
-void MessageCache::store(uint16_t module, uint32_t seq, const uint8_t* data, size_t len) {
-    RawMsg r; r.data.assign(data, data + len);
-    rawCache[module][seq] = std::move(r);
+MessageCache::MessageCache(SeqManager& sm, uint16_t modId)
+    : seqMgr(sm), moduleId(modId) {}
+
+MessageCache::~MessageCache() {
+    for(auto& kv: cache){
+        delete kv.second.request;
+        delete kv.second.response;
+    }
+    cache.clear();
 }
 
-bool MessageCache::fetchRaw(uint16_t module, uint32_t seq, RawMsg& out) const {
-    auto mit = rawCache.find(module);
-    if (mit == rawCache.end()) return false;
-    auto sit = mit->second.find(seq);
-    if (sit == mit->second.end()) return false;
-    out = sit->second;
-    return true;
+uint32_t MessageCache::pushRequest(Message* req){
+    uint32_t seq = seqMgr.nextSeq(moduleId);
+    req->header.seq = seq;
+    cache[seq] = { req, nullptr };
+    return seq;
 }
 
-void MessageCache::storeMessage(uint16_t module, uint32_t seq, Message* msg) {
-    // take ownership
-    msgCache[module][seq] = msg;
-}
-
-Message* MessageCache::fetchMessage(uint16_t module, uint32_t seq) {
-    auto mit = msgCache.find(module);
-    if (mit == msgCache.end()) return nullptr;
-    auto sit = mit->second.find(seq);
-    if (sit == mit->second.end()) return nullptr;
-    Message* m = sit->second;
-    mit->second.erase(sit);
-    return m;
-}
-
-void MessageCache::erase(uint16_t module, uint32_t seq) {
-    auto mit = rawCache.find(module);
-    if (mit != rawCache.end()) mit->second.erase(seq);
-    auto mit2 = msgCache.find(module);
-    if (mit2 != msgCache.end()) {
-        auto sit = mit2->second.find(seq);
-        if (sit != mit2->second.end()) {
-            delete sit->second;
-            mit2->second.erase(sit);
-        }
+void MessageCache::pushResponse(uint32_t seq, Message* resp){
+    if(cache.count(seq)){
+        CacheEntry& entry = cache[seq];
+        if(entry.response) delete entry.response;
+        entry.response = resp;
+    } else {
+        // 如果 seq 不存在，可选择忽略或加入缓存
+        cache[seq] = { nullptr, resp };
     }
 }
 
-void MessageCache::clearAll() {
-    for (auto &m : msgCache) {
-        for (auto &kv : m.second) delete kv.second;
+Message* MessageCache::getResponse(uint32_t seq){
+    if(cache.count(seq)) return cache[seq].response;
+    return nullptr;
+}
+
+void MessageCache::clear(){
+    for(auto& kv: cache){
+        delete kv.second.request;
+        delete kv.second.response;
     }
-    msgCache.clear();
-    rawCache.clear();
+    cache.clear();
 }

@@ -2,46 +2,34 @@
 // Created by pengbin on 2025/12/11.
 //
 #include "MessageParserFactory.hpp"
-#include "Parsers.hpp"
+#include "Message.hpp"
 #include <cstring>
-#include <map>
 
-#include "MessageTypes.hpp"
-
-static std::map<uint16_t, ModuleParserCreateFromRaw> g_moduleParsers;
-
-void MessageParserFactory::registerModuleParser(uint16_t moduleId, ModuleParserCreateFromRaw creator) {
-    g_moduleParsers[moduleId] = creator;
+// registry 静态局部变量，保证唯一性
+std::map<MsgType, ParserCreator>& MessageParserFactory::registry() {
+    static std::map<MsgType, ParserCreator> inst;
+    return inst;
 }
 
-static Message* createByTypeAndParse(const uint8_t* data, size_t len) {
-    if (len < 11) return nullptr;
-    uint8_t t = data[4];
-    Message* msg = nullptr;
-    switch (t) {
-    case MSG_QUERY: msg = new QueryMessage(); break;
-    case MSG_SET:   msg = new SetMessage(); break;
-    case MSG_ALARM: msg = new AlarmMessage(); break;
-    case MSG_PERF:  msg = new PerfMessage(); break;
-    default: return nullptr;
-    }
-    if (!msg->parse(data, len)) { delete msg; return nullptr; }
+void MessageParserFactory::registerParser(MsgType t, ParserCreator c) {
+    registry()[t] = c;
+}
+
+MessageParser* MessageParserFactory::create(MsgType t) {
+    if(registry().count(t)) return registry()[t]();
+    return nullptr;
+}
+
+Message* MessageParserFactory::parseMessage(const uint8_t* data, size_t len) {
+    if(len < sizeof(MsgHeader)) return nullptr;
+
+    MsgHeader hdr;
+    memcpy(&hdr, data, sizeof(MsgHeader));
+
+    MessageParser* parser = create(hdr.type);
+    if(!parser) return nullptr;
+
+    Message* msg = parser->parse(data, len);
+    delete parser; // Parser 工厂返回的对象临时使用完即删
     return msg;
-}
-
-Message* MessageParserFactory::parseRaw(const uint8_t* data, size_t len) {
-    if (len < 11) return nullptr;
-    // read dstModule from header bytes 2..3
-    uint16_t dst = (uint16_t(data[2])<<8) | uint16_t(data[3]);
-    auto it = g_moduleParsers.find(dst);
-    if (it != g_moduleParsers.end()) {
-        return it->second(data, len);
-    }
-    return createByTypeAndParse(data, len);
-}
-
-Message* MessageParserFactory::parseCached(uint16_t moduleId, uint32_t seq, const MessageCache& cache) {
-    MessageCache::RawMsg raw;
-    if (!cache.fetchRaw(moduleId, seq, raw)) return nullptr;
-    return parseRaw(raw.data.data(), raw.data.size());
 }
